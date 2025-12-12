@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8" />
+    <title>{% block title %}Dual Saúde{% endblock %}</title>
+
+    <!-- Tailwind via CDN (para o painel) -->
+    <script src="https://cdn.tailwindcss.com"></script>
+
+    <link rel="stylesheet" href="/static/css/style.css" />
+</head>
+<body class="bg-slate-100 text-slate-900">
+    <div class="min-h-screen flex">
+        <!-- Sidebar simples -->
+        <aside class="w-64 bg-white shadow-md hidden md:flex flex-col">
+            <div class="px-6 py-4 border-b">
+                <h1 class="text-xl font-semibold text-blue-600">Dual Saúde</h1>
+                <p class="text-xs text-slate-500">Painel Operacional</p>
+            </div>
+            <nav class="flex-1 px-4 py-4 space-y-2 text-sm">
+                <a href="/painel" class="block px-3 py-2 rounded-md bg-blue-50 text-blue-700 font-medium">Dashboard</a>
+                <a href="#" class="block px-3 py-2 rounded-md hover:bg-slate-100">Empresas</a>
+                <a href="#" class="block px-3 py-2 rounded-md hover:bg-slate-100">Funcionários</a>
+                <a href="#" class="block px-3 py-2 rounded-md hover:bg-slate-100">Atendimentos</a>
+            </nav>
+        </aside>
+
+        <!-- Conteúdo -->
+        <main class="flex-1">
+            <header class="bg-white shadow-sm px-4 py-3 flex items-center justify-between">
+                <div>
+                    <h2 class="text-lg font-semibold text-slate-800">
+                        {% block header_title %}Dashboard{% endblock %}
+                    </h2>
+                    <p class="text-xs text-slate-500">
+                        {% block header_subtitle %}Visão geral da operação{% endblock %}
+                    </p>
+                </div>
+                <div class="flex items-center gap-3">
+                    <span class="text-sm text-slate-600">Operador</span>
+                    <div class="w-9 h-9 rounded-full bg-blue-500 text-white flex items-center justify-center text-xs">
+                        DS
+                    </div>
+                </div>
+            </header>
+
+            <section class="p-4 md:p-6">
+                {% block content %}{% endblock %}
+            </section>
+        </main>
+    </div>
+</body>
+</html>
