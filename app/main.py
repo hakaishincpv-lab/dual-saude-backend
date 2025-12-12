@@ -3,8 +3,8 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.database import Base, engine
-from app.routers import auth, api, demo_setup
+from database import Base, engine
+from routers import auth, api, demo_setup
 
 
 # (Opcional) manter em dev.
