@@ -9,9 +9,9 @@ from jose import JWTError, jwt
 from passlib.context import CryptContext
 from sqlalchemy.orm import Session
 
-from app import schemas
-from app.database import get_db
-from app.models import Empresa, FuncionarioAutorizado, Usuario
+import schemas
+from database import get_db
+from models import Empresa, FuncionarioAutorizado, Usuario
 
 
 router = APIRouter(tags=["Auth"], prefix="/auth")
