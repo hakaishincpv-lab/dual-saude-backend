@@ -1,5 +1,3 @@
-# app/routers/auth.py
-
 from datetime import datetime, timedelta
 from typing import Optional
 
@@ -9,9 +7,9 @@ from jose import JWTError, jwt
 from passlib.context import CryptContext
 from sqlalchemy.orm import Session
 
-import schemas
-from database import get_db
-from models import Empresa, FuncionarioAutorizado, Usuario
+from app import schemas
+from app.database import get_db
+from app.models import Empresa, FuncionarioAutorizado, Usuario
 
 
 router = APIRouter(tags=["Auth"], prefix="/auth")
@@ -35,7 +33,9 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
 
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -> str:
     to_encode = data.copy()
-    expire = datetime.utcnow() + (expires_delta or timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES))
+    expire = datetime.utcnow() + (
+        expires_delta or timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+    )
     to_encode.update({"exp": expire})
     return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
 
@@ -63,7 +63,6 @@ def register_user(payload: schemas.UsuarioCreate, db: Session = Depends(get_db))
     - Valida se CPF está autorizado na tabela de funcionários
     """
 
-    # 1) Empresa
     empresa = (
         db.query(Empresa)
         .filter(Empresa.nome.ilike(payload.empresa_nome.strip()))
@@ -75,7 +74,6 @@ def register_user(payload: schemas.UsuarioCreate, db: Session = Depends(get_db))
             detail="Empresa não encontrada ou inativa. Verifique com o RH.",
         )
 
-    # 2) Usuário já existe?
     existing = (
         db.query(Usuario)
         .filter((Usuario.cpf == payload.cpf) | (Usuario.email == payload.email))
@@ -87,7 +85,6 @@ def register_user(payload: schemas.UsuarioCreate, db: Session = Depends(get_db))
             detail="Já existe um usuário cadastrado com este CPF ou e-mail.",
         )
 
-    # 3) Funcionário autorizado
     funcionario = (
         db.query(FuncionarioAutorizado)
         .filter(
@@ -103,22 +100,19 @@ def register_user(payload: schemas.UsuarioCreate, db: Session = Depends(get_db))
             detail="Seu CPF não está autorizado para uso do app. Procure o RH da sua empresa.",
         )
 
-    # 4) Criar usuário
-    hashed_password = get_password_hash(payload.senha)
     user = Usuario(
         nome=payload.nome,
         cpf=payload.cpf,
         email=payload.email,
         celular=payload.celular,
         empresa_id=empresa.id,
-        hashed_password=hashed_password,
+        hashed_password=get_password_hash(payload.senha),
         ativo=True,
     )
     db.add(user)
     db.commit()
     db.refresh(user)
 
-    # 5) Vincular funcionário ao usuário
     funcionario.usuario_id = user.id
     db.commit()
 
@@ -130,11 +124,6 @@ def login_for_access_token(
     form_data: OAuth2PasswordRequestForm = Depends(),
     db: Session = Depends(get_db),
 ):
-    """
-    Login do app:
-    - OAuth2PasswordRequestForm (username + password)
-    - tratamos username como e-mail
-    """
     user = authenticate_user(db, form_data.username, form_data.password)
     if not user:
         raise HTTPException(

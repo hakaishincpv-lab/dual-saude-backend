@@ -1,8 +1,9 @@
+# app/database.py
 import os
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker, DeclarativeBase
 
-# Usa DATABASE_URL do servidor (Render/Railway/etc). Se não existir, cai no SQLite local.
+from sqlalchemy import create_engine
+from sqlalchemy.orm import DeclarativeBase, sessionmaker
+
 DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./dual_saude.db")
 
 # Alguns provedores entregam postgres:// e o SQLAlchemy espera postgresql://
@@ -20,10 +21,16 @@ connect_args = {"check_same_thread": False} if DATABASE_URL.startswith("sqlite")
 engine = create_engine(
     DATABASE_URL,
     connect_args=connect_args,
-    pool_pre_ping=True,  # ajuda em conexões “dormindo”/dropadas no servidor
+    pool_pre_ping=True,
+    future=True,
 )
 
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+SessionLocal = sessionmaker(
+    bind=engine,
+    autocommit=False,
+    autoflush=False,
+    expire_on_commit=False,
+)
 
 
 def get_db():
