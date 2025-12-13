@@ -1,5 +1,5 @@
-from app.database import Base, engine
-from app import models  # importa para registrar Empresa, FuncionarioAutorizado, Usuario
+from database import Base, engine
+import models  # importa para registrar Empresa, FuncionarioAutorizado, Usuario
 
 
 def init_db():
