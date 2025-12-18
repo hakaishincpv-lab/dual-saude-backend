@@ -1,11 +1,14 @@
 from datetime import datetime, timedelta
 from typing import Optional
+import os
+import re
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from jose import JWTError, jwt
 from passlib.context import CryptContext
 from sqlalchemy.orm import Session
+from sqlalchemy import or_
 
 from app import schemas
 from app.database import get_db
@@ -14,13 +17,17 @@ from app.models import Empresa, FuncionarioAutorizado, Usuario
 
 router = APIRouter(tags=["Auth"], prefix="/auth")
 
-# Config JWT (DEV)
-SECRET_KEY = "super-secret-key-dual-saude-muda-isso-producao"
+# ✅ Em produção, defina SECRET_KEY no Render (Environment Variables)
+SECRET_KEY = os.getenv("SECRET_KEY", "super-secret-key-dual-saude-muda-isso-producao")
 ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24  # 24h
+ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "1440"))  # 24h
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login")
+
+
+def _norm_spaces(s: str) -> str:
+    return re.sub(r"\s+", " ", (s or "").strip())
 
 
 def get_password_hash(password: str) -> str:
@@ -33,9 +40,7 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
 
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -> str:
     to_encode = data.copy()
-    expire = datetime.utcnow() + (
-        expires_delta or timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
-    )
+    expire = datetime.utcnow() + (expires_delta or timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES))
     to_encode.update({"exp": expire})
     return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
 
@@ -59,32 +64,39 @@ def authenticate_user(db: Session, email: str, password: str) -> Optional[Usuari
 def register_user(payload: schemas.UsuarioCreate, db: Session = Depends(get_db)):
     """
     Cadastro de usuário do app:
-    - Valida empresa pelo nome
-    - Valida se CPF está autorizado na tabela de funcionários
+    - Valida empresa pelo nome (case-insensitive)
+    - Valida se CPF está autorizado (funcionários_autorizados)
+    - Trata duplicidade (CPF/e-mail) com HTTP 400 (não 500)
     """
+
+    empresa_nome = _norm_spaces(payload.empresa_nome)
 
     empresa = (
         db.query(Empresa)
-        .filter(Empresa.nome.ilike(payload.empresa_nome.strip()))
+        .filter(Empresa.nome.ilike(empresa_nome))  # sem % => match exato ignorando caixa
         .first()
     )
+
     if not empresa or not getattr(empresa, "ativo", True):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Empresa não encontrada ou inativa. Verifique com o RH.",
         )
 
-    existing = (
-        db.query(Usuario)
-        .filter((Usuario.cpf == payload.cpf) | (Usuario.email == payload.email))
-        .first()
-    )
-    if existing:
+    # ✅ Duplicidade tratada separadamente (mensagem mais clara)
+    if db.query(Usuario).filter(Usuario.email == payload.email).first():
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Já existe um usuário cadastrado com este CPF ou e-mail.",
+            detail="E-mail já cadastrado. Use outro e-mail ou faça login.",
         )
 
+    if db.query(Usuario).filter(Usuario.cpf == payload.cpf).first():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="CPF já cadastrado. Faça login ou solicite suporte.",
+        )
+
+    # CPF autorizado
     funcionario = (
         db.query(FuncionarioAutorizado)
         .filter(
@@ -94,29 +106,43 @@ def register_user(payload: schemas.UsuarioCreate, db: Session = Depends(get_db))
         )
         .first()
     )
+
     if not funcionario:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Seu CPF não está autorizado para uso do app. Procure o RH da sua empresa.",
         )
 
-    user = Usuario(
-        nome=payload.nome,
-        cpf=payload.cpf,
-        email=payload.email,
-        celular=payload.celular,
-        empresa_id=empresa.id,
-        hashed_password=get_password_hash(payload.senha),
-        ativo=True,
-    )
-    db.add(user)
-    db.commit()
-    db.refresh(user)
+    # ✅ 1 transação: cria usuário e vincula funcionário -> evita commit duplo e reduz chance de inconsistência
+    try:
+        user = Usuario(
+            nome=payload.nome,
+            cpf=payload.cpf,
+            email=payload.email,
+            celular=payload.celular,
+            empresa_id=empresa.id,
+            hashed_password=get_password_hash(payload.senha),
+            ativo=True,
+        )
+        db.add(user)
+        db.flush()  # garante user.id sem commit
 
-    funcionario.usuario_id = user.id
-    db.commit()
+        funcionario.usuario_id = user.id
 
-    return user
+        db.commit()
+        db.refresh(user)
+        return user
+
+    except HTTPException:
+        db.rollback()
+        raise
+    except Exception:
+        db.rollback()
+        # ✅ erro “bonito” para o app (JSON detail), em vez de estourar 500 genérico
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Não foi possível concluir o cadastro. Verifique os dados e tente novamente.",
+        )
 
 
 @router.post("/login", response_model=schemas.Token)
