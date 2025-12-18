@@ -8,19 +8,17 @@ from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from jose import JWTError, jwt
 from passlib.context import CryptContext
 from sqlalchemy.orm import Session
-from sqlalchemy import or_
+from sqlalchemy.exc import IntegrityError
 
 from app import schemas
 from app.database import get_db
 from app.models import Empresa, FuncionarioAutorizado, Usuario
 
-
 router = APIRouter(tags=["Auth"], prefix="/auth")
 
-# ✅ Em produção, defina SECRET_KEY no Render (Environment Variables)
 SECRET_KEY = os.getenv("SECRET_KEY", "super-secret-key-dual-saude-muda-isso-producao")
 ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "1440"))  # 24h
+ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "1440"))
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login")
@@ -28,6 +26,10 @@ oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login")
 
 def _norm_spaces(s: str) -> str:
     return re.sub(r"\s+", " ", (s or "").strip())
+
+
+def _digits_only(s: str) -> str:
+    return re.sub(r"\D+", "", (s or ""))
 
 
 def get_password_hash(password: str) -> str:
@@ -62,46 +64,39 @@ def authenticate_user(db: Session, email: str, password: str) -> Optional[Usuari
 
 @router.post("/register", response_model=schemas.UsuarioRead)
 def register_user(payload: schemas.UsuarioCreate, db: Session = Depends(get_db)):
-    """
-    Cadastro de usuário do app:
-    - Valida empresa pelo nome (case-insensitive)
-    - Valida se CPF está autorizado (funcionários_autorizados)
-    - Trata duplicidade (CPF/e-mail) com HTTP 400 (não 500)
-    """
-
+    # Normalizações importantes (evita máscara quebrar validação/unique)
     empresa_nome = _norm_spaces(payload.empresa_nome)
+    cpf = _digits_only(payload.cpf)
+    celular = _digits_only(payload.celular) if payload.celular else None
+    email = (payload.email or "").strip().lower()
 
-    empresa = (
-        db.query(Empresa)
-        .filter(Empresa.nome.ilike(empresa_nome))  # sem % => match exato ignorando caixa
-        .first()
-    )
-
+    # 1) Empresa
+    empresa = db.query(Empresa).filter(Empresa.nome.ilike(empresa_nome)).first()
     if not empresa or not getattr(empresa, "ativo", True):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Empresa não encontrada ou inativa. Verifique com o RH.",
         )
 
-    # ✅ Duplicidade tratada separadamente (mensagem mais clara)
-    if db.query(Usuario).filter(Usuario.email == payload.email).first():
+    # 2) Duplicidade (mensagem clara)
+    if db.query(Usuario).filter(Usuario.email == email).first():
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="E-mail já cadastrado. Use outro e-mail ou faça login.",
         )
 
-    if db.query(Usuario).filter(Usuario.cpf == payload.cpf).first():
+    if db.query(Usuario).filter(Usuario.cpf == cpf).first():
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="CPF já cadastrado. Faça login ou solicite suporte.",
         )
 
-    # CPF autorizado
+    # 3) CPF autorizado
     funcionario = (
         db.query(FuncionarioAutorizado)
         .filter(
             FuncionarioAutorizado.empresa_id == empresa.id,
-            FuncionarioAutorizado.cpf == payload.cpf,
+            FuncionarioAutorizado.cpf == cpf,
             FuncionarioAutorizado.ativo.is_(True),
         )
         .first()
@@ -113,13 +108,21 @@ def register_user(payload: schemas.UsuarioCreate, db: Session = Depends(get_db))
             detail="Seu CPF não está autorizado para uso do app. Procure o RH da sua empresa.",
         )
 
-    # ✅ 1 transação: cria usuário e vincula funcionário -> evita commit duplo e reduz chance de inconsistência
+    # ✅ CAUSA MAIS COMUM DO SEU ERRO ATUAL:
+    # CPF autorizado já foi usado (funcionario já vinculado a um usuário)
+    if getattr(funcionario, "usuario_id", None):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Este CPF já foi utilizado para cadastro. Faça login ou solicite suporte.",
+        )
+
+    # 4) Cria usuário e vincula funcionário em 1 transação
     try:
         user = Usuario(
             nome=payload.nome,
-            cpf=payload.cpf,
-            email=payload.email,
-            celular=payload.celular,
+            cpf=cpf,
+            email=email,
+            celular=celular,
             empresa_id=empresa.id,
             hashed_password=get_password_hash(payload.senha),
             ativo=True,
@@ -133,15 +136,19 @@ def register_user(payload: schemas.UsuarioCreate, db: Session = Depends(get_db))
         db.refresh(user)
         return user
 
-    except HTTPException:
+    except IntegrityError as e:
         db.rollback()
-        raise
-    except Exception:
-        db.rollback()
-        # ✅ erro “bonito” para o app (JSON detail), em vez de estourar 500 genérico
+        print("INTEGRITY ERROR /auth/register:", str(e))
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Não foi possível concluir o cadastro. Verifique os dados e tente novamente.",
+            detail="Não foi possível concluir o cadastro (dados já existentes ou vínculo inválido).",
+        )
+    except Exception as e:
+        db.rollback()
+        print("ERROR /auth/register:", str(e))
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Não foi possível concluir o cadastro, verifique os dados e tente novamente.",
         )
 
 
@@ -150,7 +157,7 @@ def login_for_access_token(
     form_data: OAuth2PasswordRequestForm = Depends(),
     db: Session = Depends(get_db),
 ):
-    user = authenticate_user(db, form_data.username, form_data.password)
+    user = authenticate_user(db, form_data.username.strip().lower(), form_data.password)
     if not user:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
