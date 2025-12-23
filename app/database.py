@@ -6,10 +6,16 @@ from sqlalchemy.orm import DeclarativeBase, sessionmaker
 
 DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./dual_saude.db")
 
-# Corrige URL antiga do Render e força psycopg v3
+# Força psycopg v3 no PostgreSQL (Render / Python 3.13)
 if DATABASE_URL.startswith("postgres://"):
     DATABASE_URL = DATABASE_URL.replace(
         "postgres://",
+        "postgresql+psycopg://",
+        1,
+    )
+elif DATABASE_URL.startswith("postgresql://"):
+    DATABASE_URL = DATABASE_URL.replace(
+        "postgresql://",
         "postgresql+psycopg://",
         1,
     )
