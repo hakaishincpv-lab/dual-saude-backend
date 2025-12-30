@@ -1,7 +1,5 @@
 from datetime import datetime, timedelta
 from typing import Optional
-import os
-import re
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
@@ -10,154 +8,153 @@ from passlib.context import CryptContext
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import IntegrityError
 
-from app import schemas
 from app.database import get_db
-from app.models import Empresa, FuncionarioAutorizado, Usuario
+from app import models, schemas
 
-router = APIRouter(tags=["Auth"], prefix="/auth")
+router = APIRouter(prefix="/auth", tags=["Auth"])
 
-SECRET_KEY = os.getenv("SECRET_KEY", "super-secret-key-dual-saude-muda-isso-producao")
+# =========================================================
+# CONFIG
+# =========================================================
+
+SECRET_KEY = "CHANGE_ME_SUPER_SECRET"  # mover para env depois
 ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "1440"))
+ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 12  # 12 horas
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login")
 
+# =========================================================
+# HELPERS
+# =========================================================
 
-def _norm_spaces(s: str) -> str:
-    return re.sub(r"\s+", " ", (s or "").strip())
+def _digits_only(s: Optional[str]) -> Optional[str]:
+    if not s:
+        return None
+    return "".join(filter(str.isdigit, s))
 
 
-def _digits_only(s: str) -> str:
-    return re.sub(r"\D+", "", (s or ""))
-
-
-def get_password_hash(password: str) -> str:
-    return pwd_context.hash(password)
+def _norm_spaces(s: Optional[str]) -> str:
+    return " ".join((s or "").strip().split())
 
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
     return pwd_context.verify(plain_password, hashed_password)
 
 
-def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -> str:
+def get_password_hash(password: str) -> str:
+    # bcrypt aceita até 72 chars
+    return pwd_context.hash(password[:72])
+
+
+def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
     to_encode = data.copy()
-    expire = datetime.utcnow() + (expires_delta or timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES))
+    expire = datetime.utcnow() + (
+        expires_delta or timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+    )
     to_encode.update({"exp": expire})
     return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
 
 
-def get_user_by_email(db: Session, email: str) -> Optional[Usuario]:
-    return db.query(Usuario).filter(Usuario.email == email).first()
+def get_user_by_email(db: Session, email: str):
+    return (
+        db.query(models.Usuario)
+        .filter(models.Usuario.email == email)
+        .first()
+    )
 
+# =========================================================
+# AUTH CORE
+# =========================================================
 
-def authenticate_user(db: Session, email: str, password: str) -> Optional[Usuario]:
+def authenticate_user(db: Session, email: str, password: str):
     user = get_user_by_email(db, email)
     if not user:
         return None
     if not verify_password(password, user.hashed_password):
         return None
-    if not getattr(user, "ativo", True):
+    if not user.ativo:
         return None
     return user
 
+# =========================================================
+# REGISTER (SEM AUTORIZAÇÃO PRÉVIA – DEMO / APP)
+# =========================================================
 
 @router.post("/register", response_model=schemas.UsuarioRead)
-def register_user(payload: schemas.UsuarioCreate, db: Session = Depends(get_db)):
-    # Normalizações importantes (evita máscara quebrar validação/unique)
-    empresa_nome = _norm_spaces(payload.empresa_nome)
+def register_user(
+    payload: schemas.UsuarioCreate,
+    db: Session = Depends(get_db),
+):
     cpf = _digits_only(payload.cpf)
-    celular = _digits_only(payload.celular) if payload.celular else None
-    email = (payload.email or "").strip().lower()
+    celular = _digits_only(payload.celular)
+    email = payload.email.strip().lower()
 
-    # 1) Empresa
-    empresa = db.query(Empresa).filter(Empresa.nome.ilike(empresa_nome)).first()
-    if not empresa or not getattr(empresa, "ativo", True):
+    if not cpf:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Empresa não encontrada ou inativa. Verifique com o RH.",
+            detail="CPF inválido.",
         )
 
-    # 2) Duplicidade (mensagem clara)
-    if db.query(Usuario).filter(Usuario.email == email).first():
+    # CPF único
+    if db.query(models.Usuario).filter(models.Usuario.cpf == cpf).first():
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="E-mail já cadastrado. Use outro e-mail ou faça login.",
+            detail="CPF já cadastrado. Faça login.",
         )
 
-    if db.query(Usuario).filter(Usuario.cpf == cpf).first():
+    # E-mail único
+    if db.query(models.Usuario).filter(models.Usuario.email == email).first():
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="CPF já cadastrado. Faça login ou solicite suporte.",
+            detail="E-mail já cadastrado. Faça login.",
         )
 
-    # 3) CPF autorizado
-    funcionario = (
-        db.query(FuncionarioAutorizado)
-        .filter(
-            FuncionarioAutorizado.empresa_id == empresa.id,
-            FuncionarioAutorizado.cpf == cpf,
-            FuncionarioAutorizado.ativo.is_(True),
-        )
-        .first()
-    )
-
-    if not funcionario:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Seu CPF não está autorizado para uso do app. Procure o RH da sua empresa.",
-        )
-
-    # ✅ CAUSA MAIS COMUM DO SEU ERRO ATUAL:
-    # CPF autorizado já foi usado (funcionario já vinculado a um usuário)
-    if getattr(funcionario, "usuario_id", None):
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Este CPF já foi utilizado para cadastro. Faça login ou solicite suporte.",
-        )
-
-    # 4) Cria usuário e vincula funcionário em 1 transação
     try:
-        user = Usuario(
-            nome=payload.nome,
+        user = models.Usuario(
+            nome=_norm_spaces(payload.nome),
             cpf=cpf,
             email=email,
             celular=celular,
-            empresa_id=empresa.id,
+            empresa_id=1,  # empresa técnica padrão (demo/app)
             hashed_password=get_password_hash(payload.senha),
             ativo=True,
         )
+
         db.add(user)
-        db.flush()  # garante user.id sem commit
-
-        funcionario.usuario_id = user.id
-
         db.commit()
         db.refresh(user)
         return user
 
     except IntegrityError as e:
         db.rollback()
-        print("INTEGRITY ERROR /auth/register:", str(e))
+        print("INTEGRITY ERROR /auth/register:", e)
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Não foi possível concluir o cadastro (dados já existentes ou vínculo inválido).",
+            detail="Não foi possível concluir o cadastro.",
         )
+
     except Exception as e:
         db.rollback()
-        print("ERROR /auth/register:", str(e))
+        print("ERROR /auth/register:", e)
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Não foi possível concluir o cadastro, verifique os dados e tente novamente.",
+            detail="Erro inesperado ao criar usuário.",
         )
 
+# =========================================================
+# LOGIN (COMPATÍVEL COM FLUTTER)
+# =========================================================
 
 @router.post("/login", response_model=schemas.Token)
-def login_for_access_token(
+def login(
     form_data: OAuth2PasswordRequestForm = Depends(),
     db: Session = Depends(get_db),
 ):
-    user = authenticate_user(db, form_data.username.strip().lower(), form_data.password)
+    email = (form_data.username or "").strip().lower()
+    password = form_data.password
+
+    user = authenticate_user(db, email, password)
     if not user:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -165,17 +162,26 @@ def login_for_access_token(
             headers={"WWW-Authenticate": "Bearer"},
         )
 
-    access_token = create_access_token(data={"sub": str(user.id)})
-    return {"access_token": access_token, "token_type": "bearer"}
+    access_token = create_access_token(
+        data={"sub": str(user.id)}
+    )
 
+    return schemas.Token(
+        access_token=access_token,
+        token_type="bearer",
+    )
+
+# =========================================================
+# CURRENT USER (JWT)
+# =========================================================
 
 def get_current_user(
     token: str = Depends(oauth2_scheme),
     db: Session = Depends(get_db),
-) -> Usuario:
+):
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
-        detail="Não foi possível validar as credenciais.",
+        detail="Token inválido ou expirado.",
         headers={"WWW-Authenticate": "Bearer"},
     )
 
@@ -187,8 +193,19 @@ def get_current_user(
     except JWTError:
         raise credentials_exception
 
-    user = db.query(Usuario).filter(Usuario.id == int(user_id)).first()
-    if user is None:
+    user = (
+        db.query(models.Usuario)
+        .filter(models.Usuario.id == int(user_id))
+        .first()
+    )
+    if not user:
         raise credentials_exception
 
     return user
+
+
+@router.get("/me", response_model=schemas.UsuarioRead)
+def read_users_me(
+    current_user: models.Usuario = Depends(get_current_user),
+):
+    return current_user

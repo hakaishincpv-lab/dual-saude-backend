@@ -1,0 +1,29 @@
+<div class="bg-white rounded-2xl ds-card p-3 ds-shadow mb-6">
+  <div class="flex flex-wrap items-center gap-2">
+    <a href="/painel/financeiro{% if ym %}?ym={{ ym }}{% endif %}"
+       class="px-3 py-2 rounded-xl text-sm font-bold {% if fin_current=='dashboard' %} ds-active {% else %} text-slate-700 hover:bg-slate-50 {% endif %}">
+      📊 Dashboard
+    </a>
+
+    <a href="/painel/financeiro/categorias"
+       class="px-3 py-2 rounded-xl text-sm font-bold {% if fin_current=='categorias' %} ds-active {% else %} text-slate-700 hover:bg-slate-50 {% endif %}">
+      🗂️ Categorias
+    </a>
+
+    <a href="/painel/financeiro/lancamentos{% if ym %}?ym={{ ym }}{% endif %}"
+       class="px-3 py-2 rounded-xl text-sm font-bold {% if fin_current=='lancamentos' %} ds-active {% else %} text-slate-700 hover:bg-slate-50 {% endif %}">
+      🧾 Lançamentos
+    </a>
+
+    <a href="/painel/financeiro/relatorios{% if ym %}?ym={{ ym }}{% endif %}"
+       class="px-3 py-2 rounded-xl text-sm font-bold {% if fin_current=='relatorios' %} ds-active {% else %} text-slate-700 hover:bg-slate-50 {% endif %}">
+      📈 Relatórios
+    </a>
+
+    <!-- NOVO: Dados de Pagamento -->
+    <a href="/painel/financeiro/pagamentos"
+       class="px-3 py-2 rounded-xl text-sm font-bold {% if fin_current=='pagamentos' %} ds-active {% else %} text-slate-700 hover:bg-slate-50 {% endif %}">
+      💳 Dados de Pagamento
+    </a>
+  </div>
+</div>

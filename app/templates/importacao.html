@@ -1,0 +1,66 @@
+{% extends "base.html" %}
+
+{% block title %}{{ title }} - Dual Saúde{% endblock %}
+
+{% block header_title %}Importação{% endblock %}
+{% block header_subtitle %}
+Envie a planilha com empresas e funcionários autorizados para cadastro no app.
+{% endblock %}
+
+{% block content %}
+<div class="max-w-3xl">
+
+  {% if error %}
+    <div class="bg-red-50 border border-red-100 text-red-700 rounded-xl p-4 mb-4">
+      <strong>Erro:</strong> {{ error }}
+    </div>
+  {% endif %}
+
+  {% if success %}
+    <div class="bg-emerald-50 border border-emerald-100 text-emerald-800 rounded-xl p-4 mb-4">
+      <strong>Importação concluída.</strong>
+      <div class="mt-2 text-sm">
+        <div>Empresas criadas: <b>{{ stats.empresas_criadas }}</b></div>
+        <div>Empresas atualizadas: <b>{{ stats.empresas_atualizadas }}</b></div>
+        <div>Funcionários criados: <b>{{ stats.funcionarios_criados }}</b></div>
+        <div>Funcionários atualizados: <b>{{ stats.funcionarios_atualizados }}</b></div>
+      </div>
+
+      {% if stats.erros and stats.erros|length > 0 %}
+        <div class="mt-3 text-sm">
+          <div class="font-bold mb-1">Linhas com problemas (ignoradas):</div>
+          <ul class="list-disc list-inside space-y-1">
+            {% for e in stats.erros %}
+              <li>{{ e }}</li>
+            {% endfor %}
+          </ul>
+        </div>
+      {% endif %}
+    </div>
+  {% endif %}
+
+  <div class="bg-white rounded-2xl ds-card p-5 ds-shadow">
+    <h3 class="text-sm font-semibold text-slate-800 mb-2">Formato esperado (XLSX)</h3>
+    <p class="text-sm text-slate-600 mb-4">
+      Colunas obrigatórias: <b>empresa_nome</b>, <b>funcionario_nome</b>, <b>funcionario_cpf</b>
+      (opcionais: empresa_cnpj, funcionario_email, ativo).
+    </p>
+
+    <form method="post" enctype="multipart/form-data" class="space-y-4">
+      <div>
+        <label class="text-sm font-semibold text-slate-700">Planilha (.xlsx)</label>
+        <input type="file" name="file" accept=".xlsx"
+               class="mt-2 block w-full text-sm file:mr-4 file:py-2 file:px-4
+                      file:rounded-xl file:border-0 file:text-sm file:font-semibold
+                      file:bg-slate-100 file:text-slate-700 hover:file:bg-slate-200" />
+      </div>
+
+      <button type="submit"
+              class="inline-flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold text-white"
+              style="background: var(--ds-primary);">
+        Importar
+      </button>
+    </form>
+  </div>
+</div>
+{% endblock %}

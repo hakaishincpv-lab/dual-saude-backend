@@ -1,11 +1,14 @@
-from fastapi import FastAPI, Request
+from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
-import traceback
+from fastapi.staticfiles import StaticFiles
+from fastapi.templating import Jinja2Templates
 
 from app.database import Base, engine
-from app.routers import auth, api, demo_setup
+from app.routers import auth, api, demo_setup, web
+from app.routers.web_financeiro import router as web_financeiro_router
+from app.routers.web_auth import router as web_auth_router
 
+# (Dev) Em produção, o ideal é Alembic migrations.
 Base.metadata.create_all(bind=engine)
 
 app = FastAPI(
@@ -22,16 +25,26 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-@app.exception_handler(Exception)
-async def unhandled_exception_handler(request: Request, exc: Exception):
-    print(f"UNHANDLED ERROR: {request.method} {request.url}")
-    traceback.print_exc()
-    return JSONResponse(status_code=500, content={"detail": "Internal Server Error"})
+# Static e Templates (Painel Web)
+app.mount("/static", StaticFiles(directory="app/static"), name="static")
+app.state.templates = Jinja2Templates(directory="app/templates")
+
 
 @app.get("/")
 def read_root():
     return {"message": "API Dual Saúde funcionando 🚀"}
 
+
+# =========================
+# APIs (não mexer)
+# =========================
 app.include_router(auth.router)
 app.include_router(api.router)
 app.include_router(demo_setup.router)
+
+# =========================
+# Web (Painel)
+# =========================
+app.include_router(web_auth_router)        # /painel/login  /painel/logout
+app.include_router(web.router)             # /painel
+app.include_router(web_financeiro_router)  # /painel/financeiro...

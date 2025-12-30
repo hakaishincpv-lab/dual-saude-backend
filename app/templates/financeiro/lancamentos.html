@@ -1,0 +1,138 @@
+{% extends "base.html" %}
+
+{% block title %}Lançamentos{% endblock %}
+{% block header_title %}Lançamentos{% endblock %}
+{% block header_subtitle %}Controle receitas e despesas com filtros, status e datas.{% endblock %}
+
+{% block content %}
+{% include "financeiro/_nav.html" %}
+
+<div class="bg-white rounded-2xl ds-card p-4 ds-shadow mb-6">
+  <form method="get" action="/painel/financeiro/lancamentos" class="grid grid-cols-1 md:grid-cols-4 gap-3">
+    <input name="ym" value="{{ ym }}" class="rounded-xl border border-slate-200 px-3 py-2 text-sm" placeholder="YYYY-MM" />
+
+    <select name="status" class="rounded-xl border border-slate-200 px-3 py-2 text-sm">
+      <option value="">Status</option>
+      <option value="PENDENTE" {% if f_status=='PENDENTE' %}selected{% endif %}>Pendente</option>
+      <option value="PAGO" {% if f_status=='PAGO' %}selected{% endif %}>Pago</option>
+    </select>
+
+    <select name="tipo" class="rounded-xl border border-slate-200 px-3 py-2 text-sm">
+      <option value="">Tipo</option>
+      <option value="RECEITA" {% if f_tipo=='RECEITA' %}selected{% endif %}>Receita</option>
+      <option value="DESPESA" {% if f_tipo=='DESPESA' %}selected{% endif %}>Despesa</option>
+    </select>
+
+    <select name="categoria_id" class="rounded-xl border border-slate-200 px-3 py-2 text-sm">
+      <option value="">Categoria</option>
+      {% for c in categorias %}
+        <option value="{{ c.id }}" {% if (f_categoria_id|string) == (c.id|string) %}selected{% endif %}>
+          {{ c.tipo }} • {{ c.nome }}
+        </option>
+      {% endfor %}
+    </select>
+
+    <div class="md:col-span-4 flex justify-end">
+      <button class="rounded-xl px-4 py-2 text-sm font-bold text-white" style="background: var(--ds-primary);">
+        Filtrar
+      </button>
+    </div>
+  </form>
+</div>
+
+<div class="bg-white rounded-2xl ds-card p-4 ds-shadow mb-6">
+  <h3 class="text-sm font-semibold text-slate-800 mb-3">Novo lançamento</h3>
+
+  <form method="post" action="/painel/financeiro/lancamentos/criar" class="grid grid-cols-1 md:grid-cols-3 gap-3">
+    <input type="hidden" name="ym" value="{{ ym }}"/>
+
+    <select name="tipo" required class="rounded-xl border border-slate-200 px-3 py-2 text-sm">
+      <option value="">Tipo</option>
+      <option value="RECEITA">Receita</option>
+      <option value="DESPESA">Despesa</option>
+    </select>
+
+    <select name="categoria_id" class="rounded-xl border border-slate-200 px-3 py-2 text-sm">
+      <option value="">Categoria (opcional)</option>
+      {% for c in categorias %}
+        <option value="{{ c.id }}">{{ c.tipo }} • {{ c.nome }}</option>
+      {% endfor %}
+    </select>
+
+    <select name="status" class="rounded-xl border border-slate-200 px-3 py-2 text-sm">
+      <option value="PENDENTE">Pendente</option>
+      <option value="PAGO">Pago</option>
+    </select>
+
+    <input name="descricao" required class="rounded-xl border border-slate-200 px-3 py-2 text-sm" placeholder="Descrição"/>
+    <input name="valor" required class="rounded-xl border border-slate-200 px-3 py-2 text-sm" placeholder="Valor (ex: 120,50)"/>
+    <input name="forma_pagamento" class="rounded-xl border border-slate-200 px-3 py-2 text-sm" placeholder="Forma (PIX, Cartão...)"/>
+
+    <input name="data_lancamento" required type="date" class="rounded-xl border border-slate-200 px-3 py-2 text-sm"/>
+    <input name="data_vencimento" type="date" class="rounded-xl border border-slate-200 px-3 py-2 text-sm"/>
+    <input name="data_pagamento" type="date" class="rounded-xl border border-slate-200 px-3 py-2 text-sm"/>
+
+    <textarea name="observacao" class="md:col-span-3 rounded-xl border border-slate-200 px-3 py-2 text-sm" placeholder="Observação (opcional)"></textarea>
+
+    <div class="md:col-span-3 flex justify-end">
+      <button class="rounded-xl px-4 py-2 text-sm font-bold text-white" style="background: var(--ds-primary);">
+        + Adicionar
+      </button>
+    </div>
+  </form>
+</div>
+
+<div class="bg-white rounded-xl shadow-sm overflow-hidden">
+  <table class="w-full text-sm">
+    <thead class="bg-slate-50 text-slate-600">
+      <tr>
+        <th class="text-left px-3 py-3">Data</th>
+        <th class="text-left px-3 py-3">Descrição</th>
+        <th class="text-left px-3 py-3">Tipo</th>
+        <th class="text-left px-3 py-3">Status</th>
+        <th class="text-right px-3 py-3">Valor</th>
+        <th class="text-right px-3 py-3">Ações</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for l in lancamentos %}
+      <tr class="border-t">
+        <td class="px-3 py-3 text-slate-700">{{ l.data_lancamento }}</td>
+        <td class="px-3 py-3 font-medium text-slate-800">{{ l.descricao }}</td>
+        <td class="px-3 py-3">
+          {% if l.tipo == "RECEITA" %}
+            <span class="text-green-700 font-semibold">Receita</span>
+          {% else %}
+            <span class="text-red-700 font-semibold">Despesa</span>
+          {% endif %}
+        </td>
+        <td class="px-3 py-3">
+          {% if l.status == "PAGO" %}
+            <span class="text-emerald-700 font-semibold">Pago</span>
+          {% else %}
+            <span class="text-amber-700 font-semibold">Pendente</span>
+          {% endif %}
+        </td>
+        <td class="px-3 py-3 text-right font-semibold text-slate-800">R$ {{ '%.2f'|format(l.valor) }}</td>
+        <td class="px-3 py-3 text-right">
+          {% if l.status != "PAGO" %}
+            <a href="/painel/financeiro/lancamentos/marcar-pago/{{ l.id }}?ym={{ ym }}"
+               class="text-emerald-700 hover:underline text-xs font-semibold mr-3">
+              Marcar pago
+            </a>
+          {% endif %}
+          <a href="/painel/financeiro/lancamentos/excluir/{{ l.id }}?ym={{ ym }}"
+             class="text-red-600 hover:underline text-xs font-semibold">
+            Excluir
+          </a>
+        </td>
+      </tr>
+      {% else %}
+      <tr>
+        <td colspan="6" class="px-4 py-6 text-center text-slate-400">Nenhum lançamento no período.</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

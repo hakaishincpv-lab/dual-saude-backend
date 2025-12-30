@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+
+{% block title %}Relatórios{% endblock %}
+{% block header_title %}Relatórios{% endblock %}
+{% block header_subtitle %}DRE simples e Fluxo de Caixa do período {{ periodo_label }}.{% endblock %}
+
+{% block content %}
+{% include "financeiro/_nav.html" %}
+
+<div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+  <div class="bg-white rounded-2xl ds-card p-5 ds-shadow">
+    <h3 class="text-sm font-semibold text-slate-800 mb-3">DRE (simples)</h3>
+    <div class="space-y-2 text-sm">
+      <div class="flex justify-between">
+        <span class="text-slate-600">Receitas</span>
+        <span class="font-semibold text-slate-800">R$ {{ '%.2f'|format(dre_receitas) }}</span>
+      </div>
+      <div class="flex justify-between">
+        <span class="text-slate-600">Despesas</span>
+        <span class="font-semibold text-slate-800">R$ {{ '%.2f'|format(dre_despesas) }}</span>
+      </div>
+      <div class="border-t pt-2 flex justify-between">
+        <span class="text-slate-700 font-bold">Resultado</span>
+        <span class="font-black text-slate-900">R$ {{ '%.2f'|format(dre_resultado) }}</span>
+      </div>
+    </div>
+    <p class="text-xs text-slate-500 mt-3">
+      Baseado na data de lançamento (competência).
+    </p>
+  </div>
+
+  <div class="bg-white rounded-2xl ds-card p-5 ds-shadow">
+    <h3 class="text-sm font-semibold text-slate-800 mb-3">Fluxo de Caixa</h3>
+    <div class="space-y-2 text-sm">
+      <div class="flex justify-between">
+        <span class="text-slate-600">Entradas (pagas)</span>
+        <span class="font-semibold text-slate-800">R$ {{ '%.2f'|format(caixa_in) }}</span>
+      </div>
+      <div class="flex justify-between">
+        <span class="text-slate-600">Saídas (pagas)</span>
+        <span class="font-semibold text-slate-800">R$ {{ '%.2f'|format(caixa_out) }}</span>
+      </div>
+      <div class="border-t pt-2 flex justify-between">
+        <span class="text-slate-700 font-bold">Caixa líquido</span>
+        <span class="font-black text-slate-900">R$ {{ '%.2f'|format(caixa_liquido) }}</span>
+      </div>
+    </div>
+    <p class="text-xs text-slate-500 mt-3">
+      Considera apenas lançamentos pagos com data de pagamento no período.
+    </p>
+  </div>
+</div>
+
+<div class="bg-white rounded-2xl ds-card p-5 ds-shadow">
+  <h3 class="text-sm font-semibold text-slate-800 mb-2">Próxima melhoria</h3>
+  <p class="text-sm text-slate-600">
+    Vamos acrescentar gráficos e detalhamento por categoria (top despesas, top receitas) e exportação.
+  </p>
+</div>
+{% endblock %}

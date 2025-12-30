@@ -64,3 +64,11 @@ class Usuario(Base):
         back_populates="usuario",
         uselist=False,
     )
+
+
+# ============================================================
+# ✅ IMPORTA OS MODELS DO FINANCEIRO (REGISTRA NO ORM)
+# ============================================================
+from app.models.financeiro import CategoriaFinanceira, LancamentoFinanceiro  # noqa: E402,F401
+from app.models.financeiro import PagamentoDestino  # noqa: F401
+

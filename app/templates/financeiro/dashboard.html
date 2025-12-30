@@ -1,0 +1,80 @@
+{% extends "base.html" %}
+
+{% block title %}Financeiro - Dual Saúde{% endblock %}
+
+{% block header_title %}Financeiro{% endblock %}
+{% block header_subtitle %}Resumo do período {{ periodo_label }}.{% endblock %}
+
+{% block content %}
+{% include "financeiro/_nav.html" %}
+
+<div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+  <div class="bg-white rounded-xl shadow-sm p-4">
+    <p class="text-xs text-slate-500">Receitas</p>
+    <p class="text-2xl font-semibold text-slate-800 mt-1">R$ {{ '%.2f'|format(receitas) }}</p>
+  </div>
+  <div class="bg-white rounded-xl shadow-sm p-4">
+    <p class="text-xs text-slate-500">Despesas</p>
+    <p class="text-2xl font-semibold text-slate-800 mt-1">R$ {{ '%.2f'|format(despesas) }}</p>
+  </div>
+  <div class="bg-white rounded-xl shadow-sm p-4">
+    <p class="text-xs text-slate-500">Saldo</p>
+    <p class="text-2xl font-semibold text-slate-800 mt-1">R$ {{ '%.2f'|format(saldo) }}</p>
+  </div>
+  <div class="bg-white rounded-xl shadow-sm p-4">
+    <p class="text-xs text-slate-500">Pendentes (no período)</p>
+    <p class="text-2xl font-semibold text-slate-800 mt-1">R$ {{ '%.2f'|format(pendentes) }}</p>
+  </div>
+</div>
+
+<div class="bg-white rounded-2xl shadow-sm p-4">
+  <div class="flex items-center justify-between">
+    <h3 class="text-sm font-semibold text-slate-800">Últimos lançamentos</h3>
+    <a href="/painel/financeiro/lancamentos?ym={{ ym }}"
+       class="text-sm font-bold underline decoration-slate-300 text-slate-700">
+      Ver todos
+    </a>
+  </div>
+
+  <div class="mt-3 overflow-x-auto">
+    <table class="w-full text-sm">
+      <thead class="bg-slate-50 text-slate-600">
+        <tr>
+          <th class="text-left px-3 py-2">Data</th>
+          <th class="text-left px-3 py-2">Descrição</th>
+          <th class="text-left px-3 py-2">Tipo</th>
+          <th class="text-left px-3 py-2">Status</th>
+          <th class="text-right px-3 py-2">Valor</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for l in ultimos %}
+        <tr class="border-t">
+          <td class="px-3 py-2 text-slate-700">{{ l.data_lancamento }}</td>
+          <td class="px-3 py-2 font-medium text-slate-800">{{ l.descricao }}</td>
+          <td class="px-3 py-2">
+            {% if l.tipo == "RECEITA" %}
+              <span class="text-green-700 font-semibold">Receita</span>
+            {% else %}
+              <span class="text-red-700 font-semibold">Despesa</span>
+            {% endif %}
+          </td>
+          <td class="px-3 py-2">
+            {% if l.status == "PAGO" %}
+              <span class="text-emerald-700 font-semibold">Pago</span>
+            {% else %}
+              <span class="text-amber-700 font-semibold">Pendente</span>
+            {% endif %}
+          </td>
+          <td class="px-3 py-2 text-right font-semibold text-slate-800">R$ {{ '%.2f'|format(l.valor) }}</td>
+        </tr>
+        {% else %}
+        <tr>
+          <td colspan="5" class="px-3 py-6 text-center text-slate-400">Sem lançamentos no período.</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}
